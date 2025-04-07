@@ -29,7 +29,7 @@ globals:
           - osd
 
       node4:
-        disk-size: 40
+        disk-size: 20
         no-of-volumes: 4
         role:
           - osd
