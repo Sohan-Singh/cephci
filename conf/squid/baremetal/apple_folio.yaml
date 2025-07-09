@@ -4,7 +4,7 @@ globals:
       networks:
         public: ['10.0.0.0/12']
       nodes:
-        - hostname: folio08.ceph.redhat.com
+        - hostname: folio08
           ip: 10.1.172.228
           root_password: r
           role:
@@ -18,7 +18,7 @@ globals:
             - /dev/sdd
             - /dev/sde
             - /dev/nvme0n1
-        - hostname: folio16.ceph.redhat.com
+        - hostname: folio16
           ip: 10.8.128.132
           root_password: r
           role:
@@ -35,7 +35,7 @@ globals:
             - /dev/nvme5n1
             - /dev/nvme6n1
             - /dev/nvme7n1
-        - hostname: folio17.ceph.redhat.com
+        - hostname: folio17
           ip: 10.8.128.133
           root_password: r
           role:
@@ -52,7 +52,7 @@ globals:
             - /dev/nvme5n1
             - /dev/nvme6n1
             - /dev/nvme7n1
-        - hostname: folio18.ceph.redhat.com
+        - hostname: folio18
           ip: 10.8.128.134
           root_password: r
           role:
