@@ -2,7 +2,7 @@ globals:
   - ceph-cluster:
       name: ceph
       networks:
-        public: ['9.11.206.0/21']
+        public: ['9.11.206.0/24']
       nodes:
         - hostname: sohan-0.onecloud.stglabs.ibm.com
           ip: 9.11.206.108
