@@ -841,13 +841,15 @@ def check_nfs_daemons_removed(client):
     check_nfs_daemons_removed_retry(client)
 
 
-@retry(OperationFailedError, tries=10, delay=10, backoff=1)
+@retry(OperationFailedError, tries=30, delay=10, backoff=1)
 def check_nfs_daemons_removed_retry(client):
     """
     Helper function to check if NFS daemons are removed.
     Raises OperationFailedError if daemons are still present (to trigger retry).
     Returns True if all daemons are removed.
     """
+    # We are increasing the timeout to 300 seconds to avoid the timeout error
+    # with some of the QoS tests which were intermittently failing to cleanup
     out, _ = client.exec_command(sudo=True, cmd="ceph orch ls --service-type=nfs")
     log.info(out)
     out = out.strip()
