@@ -403,11 +403,6 @@ class BootstrapMixin:
             if "automatically-accept-license" not in cmd:
                 cmd += " --automatically-accept-license"
 
-            # By default, call home is disabled when no call home options are
-            # are found
-            if "call-home" not in cmd:
-                cmd += " --disable-ibm-call-home"
-
         out, err = self.installer.exec_command(
             sudo=True,
             cmd=cmd,
