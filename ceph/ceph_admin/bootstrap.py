@@ -410,6 +410,15 @@ class BootstrapMixin:
             check_ec=True,
         )
 
+        # Silence the alerts to prevent downstream tests erroring when
+        # callhome
+        if (
+            manifest_obj.product == "ibm"
+            and LooseVersion(str(manifest_obj.release)) >= LooseVersion("9.1")
+            and "call-home" not in cmd
+        ):
+            self.shell(args=["ceph", "orch", "accept", "call-home-enabled"], timeout=60)
+
         logger.info("Bootstrap output : %s", out)
         logger.error("Bootstrap error: %s", err)
         # The path to ssh public key mentioned in either output-pub-ssh-key or
