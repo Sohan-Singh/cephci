@@ -28,6 +28,7 @@ from ceph.parallel import parallel
 from ceph.utils import check_ceph_healthly
 from cli.ceph.ceph import Ceph
 from cli.cephadm.cephadm import CephAdm
+from cli.utilities.filesys import Mount
 from compute.openstack import get_openstack_driver
 from tests.cephfs.exceptions import ValueMismatchError
 from utility.log import Log
@@ -3284,6 +3285,8 @@ os.system('sudo systemctl start  network')
         :param nfs_export:
         :param nfs_mount_dir:
         """
+        Mount(client)._ensure_nfs_utils()
+
         client.exec_command(sudo=True, cmd=f"mkdir -p {nfs_mount_dir}")
         command = f"mount -t nfs -o vers=4,port={kwargs.get('port', '2049')} {nfs_server}:{nfs_export} {nfs_mount_dir}"
         if kwargs.get("fstab"):
