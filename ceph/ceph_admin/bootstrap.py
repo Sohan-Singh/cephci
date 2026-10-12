@@ -380,10 +380,24 @@ class BootstrapMixin:
                     "No registry host resolved; "
                     "skipping registry credentials on bootstrap"
                 )
-            elif registry_json is not None:
-                cmd += construct_registry(self, registry_url, json_file=True)
             else:
-                cmd += construct_registry(self, registry_url)
+                try:
+                    cmd += construct_registry(
+                        self, registry_url, json_file=registry_json is not None
+                    )
+                except KeyError as err:
+                    # Explicit bootstrap-registry must have credentials; a host
+                    # derived from the image (e.g. public quay.ceph.io) may not.
+                    if isinstance(overrides, dict) and overrides.get(
+                        "bootstrap-registry"
+                    ):
+                        raise
+                    logger.warning(
+                        "No credentials for image registry %r, skipping registry "
+                        "login on bootstrap: %s",
+                        registry_url,
+                        err,
+                    )
 
         # Generate dashboard certificate and key if bootstrap cli
         # have this options as dashboard-key and dashboard-crt
