@@ -1,5 +1,6 @@
 """IBM-Cloud VPC provider implementation for CephVMNode."""
 
+import ipaddress
 import re
 import socket
 from copy import deepcopy
@@ -7,6 +8,7 @@ from datetime import datetime, timedelta
 from time import sleep
 from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 
 from ibm_cloud_networking_services import DnsSvcsV1
 from ibm_cloud_networking_services.dns_svcs_v1 import (
@@ -202,6 +204,140 @@ def get_ibm_service(access_key: str, service_url: str):
     service.set_http_config({"timeout": 130})  # Increase to 130s
 
     return service
+
+
+def _usable_reserved_address(result):
+    """Return a reserved IP address, ignoring IBM's unassigned placeholder."""
+    address = str((result or {}).get("address") or "")
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return None
+    if ip.is_unspecified or ip.is_loopback or ip.is_multicast:
+        return None
+    return str(ip)
+
+
+def _find_named_reserved_ip(service, subnet_id, name):
+    """Return the reserved IP dict with this name, if the create response was lost."""
+    try:
+        page = service.list_subnet_reserved_ips(
+            subnet_id=subnet_id, sort="-created_at", limit=100
+        ).get_result()
+    except (RequestException, ApiException) as err:
+        LOG.warning("Could not list reserved IPs on subnet %s: %s", subnet_id, err)
+        return None
+    for reserved in page.get("reserved_ips") or []:
+        if reserved.get("name") == name:
+            return reserved
+    return None
+
+
+def _create_reserved_ip_once(service, subnet_id, name):
+    """Create a named reserved IP, recovering it if the POST response is lost."""
+    last_err = None
+    for attempt in range(5):
+        try:
+            return service.create_subnet_reserved_ip(
+                subnet_id=subnet_id, name=name
+            ).get_result()
+        except RequestException as err:
+            last_err = err
+        except ApiException as err:
+            if err.status_code not in (409, 429, 500, 502, 503, 504):
+                raise
+            last_err = err
+        LOG.warning(
+            "Reserved IP create failed on subnet %s (attempt %s): %s",
+            subnet_id,
+            attempt + 1,
+            last_err,
+        )
+        found = _find_named_reserved_ip(service, subnet_id, name)
+        if found:
+            LOG.info(
+                "Found reserved IP %s after a lost create response", found.get("id")
+            )
+            return found
+        sleep(min(2**attempt, 8))
+    raise ValueError(
+        "IBM reserved IP create failed on subnet %s after retries: %s"
+        % (subnet_id, last_err)
+    )
+
+
+def reserve_ingress_ip(vm_node):
+    """
+    Reserve an IP on the node's VPC subnet via the IBM Cloud VPC API.
+
+    The create call often returns address 0.0.0.0 while lifecycle_state is
+    still pending. Poll until IBM assigns a real address. A connection reset
+    on the POST is retried, and the named reservation is reused if IBM
+    created it but the response never came back.
+
+    Args:
+        vm_node: CephVMNodeIBM instance
+
+    Returns:
+        (reserved_ip_id, address, prefix) tuple
+    """
+    subnet_id = vm_node.node["primary_network_interface"]["subnet"]["id"]
+    service = vm_node.service
+    name = "cephci-ingress-%s" % uuid4().hex[:12]
+    result = _create_reserved_ip_once(service, subnet_id, name)
+    reserved_id = result["id"]
+    address = _usable_reserved_address(result)
+
+    # IBM documents 0.0.0.0 until the reserved IP leaves pending.
+    for _ in range(30):
+        if address:
+            break
+        state = result.get("lifecycle_state")
+        LOG.info(
+            "Waiting for reserved IP %s on subnet %s (state=%s address=%s)",
+            reserved_id,
+            subnet_id,
+            state,
+            result.get("address"),
+        )
+        if state == "failed":
+            break
+        sleep(2)
+        try:
+            result = service.get_subnet_reserved_ip(
+                subnet_id=subnet_id, id=reserved_id
+            ).get_result()
+        except (RequestException, ApiException) as err:
+            LOG.warning("Reserved IP lookup failed for %s: %s", reserved_id, err)
+            continue
+        address = _usable_reserved_address(result)
+
+    if not address:
+        try:
+            delete_reserved_ip(service, subnet_id, reserved_id)
+        except Exception as err:  # noqa
+            LOG.warning(
+                "Failed to delete unassigned reserved IP %s: %s", reserved_id, err
+            )
+        raise ValueError(
+            "IBM reserved IP %s on subnet %s was not assigned an address "
+            "(lifecycle_state=%s, address=%s)"
+            % (
+                reserved_id,
+                subnet_id,
+                result.get("lifecycle_state"),
+                result.get("address"),
+            )
+        )
+
+    LOG.info("Reserved IP %s on subnet %s", address, subnet_id)
+    prefix = ipaddress.ip_network(vm_node.subnet, strict=False).prefixlen
+    return reserved_id, address, prefix
+
+
+def delete_reserved_ip(service, subnet_id, reserved_id):
+    """Delete one VPC reserved IP."""
+    service.delete_subnet_reserved_ip(subnet_id=subnet_id, id=reserved_id)
 
 
 def get_dns_service(
