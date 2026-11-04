@@ -180,8 +180,14 @@ def bootstrap(
                 generate_bootstrap_spec(nodes, **kw)
             kw[k] = generate_bootstrap_config(installer, kw.get(k))
 
-    # Check for registry details (host-keyed registries: in ~/.cephci.yaml)
-    if not kw.get("registry-url"):
+    # Check for registry details (host-keyed registries: in ~/.cephci.yaml).
+    # Public quay images (quay.io / quay.ceph.io) do not need private registry
+    # login flags (--registry-url / username / password).
+    if isinstance(image, str) and image.startswith("quay."):
+        for key in ("registry-url", "registry-username", "registry-password"):
+            kw.pop(key, None)
+        kw.pop("bootstrap-registry", None)
+    elif not kw.get("registry-url"):
         registry_host = None
         if kw.get("bootstrap-registry"):
             registry_host = kw.pop("bootstrap-registry")

@@ -367,27 +367,36 @@ class BootstrapMixin:
             else:
                 image_ref = self.config.get("container_image")
 
-            overrides = self.config.get("overrides") or {}
-            registry_url = resolve_registry_host(
-                overrides=overrides,
-                image=image_ref,
-                key="bootstrap-registry",
-            )
-            logger.info(
-                "Using registry host %r for bootstrap login "
-                "(bootstrap-registry / image host)",
-                registry_url,
-            )
-
-            if not registry_url:
-                logger.warning(
-                    "No registry host resolved; "
-                    "skipping registry credentials on bootstrap"
+            # Public quay images (quay.io / quay.ceph.io) do not need private
+            # registry login flags (--registry-url / username / password).
+            if isinstance(image_ref, str) and image_ref.startswith("quay."):
+                logger.info(
+                    "Bootstrap image %r starts with 'quay.'; skipping registry "
+                    "credentials on bootstrap",
+                    image_ref,
                 )
-            elif registry_json is not None:
-                cmd += construct_registry(self, registry_url, json_file=True)
             else:
-                cmd += construct_registry(self, registry_url)
+                overrides = self.config.get("overrides") or {}
+                registry_url = resolve_registry_host(
+                    overrides=overrides,
+                    image=image_ref,
+                    key="bootstrap-registry",
+                )
+                logger.info(
+                    "Using registry host %r for bootstrap login "
+                    "(bootstrap-registry / image host)",
+                    registry_url,
+                )
+
+                if not registry_url:
+                    logger.warning(
+                        "No registry host resolved; "
+                        "skipping registry credentials on bootstrap"
+                    )
+                elif registry_json is not None:
+                    cmd += construct_registry(self, registry_url, json_file=True)
+                else:
+                    cmd += construct_registry(self, registry_url)
 
         # Generate dashboard certificate and key if bootstrap cli
         # have this options as dashboard-key and dashboard-crt
